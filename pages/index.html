@@ -3,9 +3,149 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>フロントエンドです</title>
+    <meta name="description" content="Cloudflare Workers API の接続確認ダッシュボード">
+    <title>Kaku Handou | API Console</title>
+    <style>
+        :root {
+            --ink: #1f2a2e;
+            --muted: #657176;
+            --paper: #f7f3ec;
+            --panel: rgba(255, 253, 248, .86);
+            --line: #ded8cc;
+            --teal: #176b68;
+            --teal-dark: #0d4848;
+            --coral: #c65d43;
+            --yellow: #e7b44b;
+            --shadow: 0 20px 50px rgba(39, 48, 45, .12);
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at 12% 8%, rgba(231, 180, 75, .22), transparent 24rem),
+                radial-gradient(circle at 95% 16%, rgba(23, 107, 104, .16), transparent 28rem),
+                var(--paper);
+            font-family: "Trebuchet MS", "Yu Gothic", "Hiragino Kaku Gothic ProN", sans-serif;
+            min-height: 100vh;
+        }
+
+        header, main { max-width: 1180px; margin: 0 auto; padding: 0 28px; }
+        header { padding-top: 42px; }
+        .eyebrow { color: var(--coral); font-size: .75rem; font-weight: 700; letter-spacing: .16em; }
+        h1 { max-width: 760px; margin: 12px 0 14px; font-size: clamp(2.3rem, 6vw, 5.5rem); line-height: .98; letter-spacing: -.04em; }
+        .intro { max-width: 620px; color: var(--muted); line-height: 1.75; }
+        main { padding-top: 34px; padding-bottom: 60px; }
+        .control-bar, .panel { border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); backdrop-filter: blur(12px); }
+        .control-bar { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: end; padding: 18px; border-radius: 10px; }
+        label { display: grid; gap: 7px; color: var(--muted); font-size: .78rem; font-weight: 700; letter-spacing: .05em; }
+        input { width: 100%; padding: 13px 14px; border: 1px solid #c9c2b5; border-radius: 5px; color: var(--ink); background: #fffdf8; font: inherit; }
+        input:focus { outline: 3px solid rgba(23, 107, 104, .18); border-color: var(--teal); }
+        button { border: 0; border-radius: 5px; padding: 13px 20px; color: #fffdf8; background: var(--teal); font: inherit; font-weight: 700; cursor: pointer; transition: transform .2s, background .2s; }
+        button:hover { background: var(--teal-dark); transform: translateY(-1px); }
+        button:disabled { opacity: .55; cursor: wait; transform: none; }
+        .status { display: flex; gap: 9px; align-items: center; margin: 18px 0; color: var(--muted); font-size: .85rem; }
+        .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--yellow); }
+        .dot.ok { background: var(--teal); }
+        .dot.error { background: var(--coral); }
+        .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+        .panel { padding: 22px; border-radius: 8px; min-height: 250px; }
+        .panel.wide { grid-column: 1 / -1; min-height: 210px; }
+        .panel-head { display: flex; justify-content: space-between; gap: 16px; align-items: baseline; border-bottom: 1px solid var(--line); padding-bottom: 13px; }
+        h2 { margin: 0; font-size: 1.2rem; }
+        .route { color: var(--teal); font-family: Consolas, monospace; font-size: .78rem; }
+        .result { margin: 18px 0 0; min-height: 130px; overflow: auto; color: #38484a; white-space: pre-wrap; font: .85rem/1.65 Consolas, monospace; }
+        .endpoint { border-top: 1px solid var(--line); padding: 14px 0; }
+        .endpoint:first-child { border-top: 0; padding-top: 0; }
+        .endpoint strong { display: block; margin-bottom: 5px; }
+        .endpoint span { color: var(--muted); font-size: .84rem; }
+        footer { padding: 0 28px 32px; color: var(--muted); text-align: center; font-size: .76rem; }
+        @media (max-width: 700px) {
+            header, main { padding-left: 18px; padding-right: 18px; }
+            header { padding-top: 28px; }
+            .control-bar, .grid { grid-template-columns: 1fr; }
+            .panel.wide { grid-column: auto; }
+            button { width: 100%; }
+        }
+    </style>
 </head>
 <body>
-    <p>フロントエンドです</p>
+    <header>
+        <div class="eyebrow">PI12 / CLOUDFLARE WORKERS</div>
+        <h1>Kaku Handou<br>API Console</h1>
+        <p class="intro">Pages から Workers の API を呼び出し、接続先・ステータス・レスポンスをひとつの画面で確認します。</p>
+    </header>
+
+    <main>
+        <section class="control-bar" aria-label="接続先設定">
+            <label for="base-url">Worker ベース URL
+                <input id="base-url" type="url" value="http://127.0.0.1:8787" spellcheck="false">
+            </label>
+            <button id="run-all" type="button">全エンドポイントを確認</button>
+        </section>
+        <div class="status" role="status" aria-live="polite"><span class="dot" id="status-dot"></span><span id="status-text">接続先を設定して確認してください</span></div>
+
+        <section class="grid">
+            <article class="panel wide">
+                <div class="panel-head"><h2>Course</h2><span class="route">GET /api/course</span></div>
+                <pre class="result" id="course-result">未実行</pre>
+            </article>
+            <article class="panel">
+                <div class="panel-head"><h2>Hello</h2><span class="route">GET /api/hello</span></div>
+                <label for="name">名前
+                    <input id="name" value="山田" maxlength="40">
+                </label>
+                <pre class="result" id="hello-result">未実行</pre>
+            </article>
+            <article class="panel">
+                <div class="panel-head"><h2>Fortune</h2><span class="route">GET /api/fortune</span></div>
+                <pre class="result" id="fortune-result">未実行</pre>
+            </article>
+            <article class="panel wide">
+                <div class="panel-head"><h2>Events</h2><span class="route">GET /api/events</span></div>
+                <pre class="result" id="events-result">未実行</pre>
+            </article>
+        </section>
+    </main>
+    <footer>Cloudflare Pages → Cloudflare Workers</footer>
+
+    <script>
+        const endpointIds = ["course", "hello", "fortune", "events"];
+        const baseUrl = document.querySelector("#base-url");
+        const statusDot = document.querySelector("#status-dot");
+        const statusText = document.querySelector("#status-text");
+        const runButton = document.querySelector("#run-all");
+
+        function setStatus(message, state) {
+            statusText.textContent = message;
+            statusDot.className = `dot ${state || ""}`;
+        }
+
+        async function request(endpoint, query = "") {
+            const response = await fetch(`${baseUrl.value.replace(/\/$/, "")}/api/${endpoint}${query}`);
+            const body = await response.json();
+            document.querySelector(`#${endpoint}-result`).textContent = JSON.stringify(body, null, 2);
+            return response.ok;
+        }
+
+        runButton.addEventListener("click", async () => {
+            runButton.disabled = true;
+            setStatus("Worker に接続しています...", "");
+            try {
+                const name = encodeURIComponent(document.querySelector("#name").value.trim());
+                const results = await Promise.all([
+                    request("course"), request("hello", `?name=${name}`), request("fortune"), request("events")
+                ]);
+                const success = results.every(Boolean);
+                setStatus(success ? "4つのエンドポイントを確認しました" : "一部のエンドポイントでエラーが返りました", success ? "ok" : "error");
+            } catch (error) {
+                setStatus(`接続できません: ${error.message}`, "error");
+                endpointIds.forEach((id) => { document.querySelector(`#${id}-result`).textContent = "レスポンスを取得できませんでした"; });
+            } finally {
+                runButton.disabled = false;
+            }
+        });
+    </script>
 </body>
 </html>
